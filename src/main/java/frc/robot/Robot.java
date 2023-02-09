@@ -24,66 +24,67 @@ import edu.wpi.first.wpilibj.PneumaticsModuleType;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
-//import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
-/*import java.sql.Time;
+//Unused imports
+/*import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+
+import java.sql.Time;
 import java.sql.Timestamp;
 import java.text.BreakIterator;
-import java.util.concurrent.TimeUnit;*/
-//import com.ctre.phoenix.time.StopWatch;
-// import com.ctre.phoenix.motorcontrol.ControlMode;
-// import com.ctre.phoenix.motorcontrol.*;
-//import com.ctre.phoenix.motorcontrol.VictorSPXControlMode;
-//import com.ctre.phoenix.motorcontrol.can.VictorSPX;
-// import com.ctre.phoenix.motorcontrol.can.*;
-//import com.revrobotics.RelativeEncoder;
-// import com.revrobotics.SparkMaxPIDController; 
-// import com.ctre.phoenix.signals.*;
-//import edu.wpi.first.wpilibj.motorcontrol.MotorController;
-// import edu.wpi.first.wpilibj.motorcontrol.Spark;
+import java.util.concurrent.TimeUnit;
+import com.ctre.phoenix.time.StopWatch;
+
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.*;
+import com.ctre.phoenix.motorcontrol.VictorSPXControlMode;
+import com.ctre.phoenix.motorcontrol.can.VictorSPX;
+import com.ctre.phoenix.motorcontrol.can.*;
+import com.revrobotics.RelativeEncoder;
+import com.revrobotics.SparkMaxPIDController; 
+import com.ctre.phoenix.signals.*;
+import edu.wpi.first.wpilibj.motorcontrol.MotorController;
+import edu.wpi.first.wpilibj.motorcontrol.Spark;*/
 
 public class Robot extends TimedRobot {
   // variables for the left controllers
   PWMVictorSPX driveLeftA = new PWMVictorSPX(1);
   PWMVictorSPX driveLeftB = new PWMVictorSPX(2);
-
   // Motor controller group for the left motors
   MotorControllerGroup leftMotors = new MotorControllerGroup(driveLeftA, driveLeftB);
 
   // variables for the right motor controllers
   PWMVictorSPX driveRightA = new PWMVictorSPX(3);
   PWMVictorSPX driveRightB = new PWMVictorSPX(4);
-
   // Motor controller group for the right motors
   MotorControllerGroup rightMotors = new MotorControllerGroup(driveRightA, driveRightB);
 
   // establishing differential drive
   DifferentialDrive drive = new DifferentialDrive(leftMotors, rightMotors);
 
+
   // variables for the arm controls
   CANSparkMax armYAxis = new CANSparkMax(11, MotorType.kBrushless);
   PWMVictorSPX armXAxis = new PWMVictorSPX(5);
-
   // Encoders for autonomous
   Encoder vertEncoder = new Encoder(0, 1);
   Encoder horiEncoder = new Encoder(2, 3);
+
 
   //variables for the pneumatics system
   Compressor compressor = new Compressor(1, PneumaticsModuleType.REVPH);
   DoubleSolenoid solenoid = new DoubleSolenoid(PneumaticsModuleType.REVPH, 0, 1);
 
+
   // joysticks
   Joystick driverController = new Joystick(1);
   XboxController armController = new XboxController(0);
 
+
   //Constants for controlling the arm. needs adjustments for this robot
   final double armTimeUp = 0.5;
-
   //current limit for the arm
   static final int ArmCurrentLimitA = 20;
-
   //Arm power output
   static final double ArmOutputPower = 0.1;
-
   //time to move the arm
   static final double ArmExtendTime = 2.0;
 
