@@ -5,7 +5,6 @@ package frc.robot;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.Encoder;
 
 // motor controllers
 import com.revrobotics.CANSparkMax;
@@ -13,6 +12,9 @@ import com.revrobotics.CANSparkMax.IdleMode;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import edu.wpi.first.wpilibj.motorcontrol.PWMVictorSPX;
 import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
+import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+import com.revrobotics.RelativeEncoder;
+import com.revrobotics.SparkMaxRelativeEncoder;
 
 //pneumatics
 import edu.wpi.first.wpilibj.Compressor;
@@ -22,27 +24,6 @@ import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PneumaticsModuleType;
 import edu.wpi.first.wpilibj.XboxController;
-import edu.wpi.first.wpilibj.drive.DifferentialDrive;
-
-//Unused imports
-/*import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
-
-import java.sql.Time;
-import java.sql.Timestamp;
-import java.text.BreakIterator;
-import java.util.concurrent.TimeUnit;
-import com.ctre.phoenix.time.StopWatch;
-
-import com.ctre.phoenix.motorcontrol.ControlMode;
-import com.ctre.phoenix.motorcontrol.*;
-import com.ctre.phoenix.motorcontrol.VictorSPXControlMode;
-import com.ctre.phoenix.motorcontrol.can.VictorSPX;
-import com.ctre.phoenix.motorcontrol.can.*;
-import com.revrobotics.RelativeEncoder;
-import com.revrobotics.SparkMaxPIDController; 
-import com.ctre.phoenix.signals.*;
-import edu.wpi.first.wpilibj.motorcontrol.MotorController;
-import edu.wpi.first.wpilibj.motorcontrol.Spark;*/
 
 public class Robot extends TimedRobot {
   // variables for the left controllers
@@ -64,9 +45,9 @@ public class Robot extends TimedRobot {
   // variables for the arm controls
   CANSparkMax armYAxis = new CANSparkMax(11, MotorType.kBrushless);
   PWMVictorSPX armXAxis = new PWMVictorSPX(5);
+
   // Encoders for autonomous
-  Encoder vertEncoder = new Encoder(0, 1);
-  Encoder horiEncoder = new Encoder(2, 3);
+  private RelativeEncoder yAxisEncoder;
 
 
   //variables for the pneumatics system
@@ -87,6 +68,7 @@ public class Robot extends TimedRobot {
   static final double ArmOutputPower = 0.1;
   //time to move the arm
   static final double ArmExtendTime = 2.0;
+  double armPower = 0.0;
 
   //Varibles needed for the code
   boolean armUp = true; //Arm initialized to up because that's how it would start a match
@@ -108,12 +90,9 @@ public class Robot extends TimedRobot {
   public void robotInit() {
 
     //initial conditions for the drive motors
-    /*driveLeftA.setInverted(true);
-    driveLeftB.setInverted(true);
-    driveRightA.setInverted(false);
-    driveRightB.setInverted(false);*/
     leftMotors.setInverted(true);
     rightMotors.setInverted(false);
+    drive.setDeadband(0.05);
     
     //initla conditions for the arm
     armYAxis.setInverted(true);
@@ -129,9 +108,16 @@ public class Robot extends TimedRobot {
     SmartDashboard.putBoolean("Go For Auto", false);
     goForAuto = SmartDashboard.getBoolean("Go For Auto", false);
 
-    // the robot will move 0.5 feet per 256 pulses - 1 rotation = 256 pulses
-    vertEncoder.setDistancePerPulse(0.5/256.);
-    horiEncoder.setDistancePerPulse(0.5/256.);
+    //Initialize encoders
+    yAxisEncoder = armYAxis.getEncoder(SparkMaxRelativeEncoder.Type.kQuadrature, 4096);
+    yAxisEncoder.setPosition(0);
+
+    armYAxis.enableSoftLimit(CANSparkMax.SoftLimitDirection.kForward, true);
+    armYAxis.enableSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, true);
+
+    armYAxis.setSoftLimit(CANSparkMax.SoftLimitDirection.kForward, 5);
+    armYAxis.setSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, 0);
+
   }
 
   /**
@@ -176,25 +162,14 @@ public class Robot extends TimedRobot {
   @Override
   public void autonomousPeriodic() {
     //arm control code for autonomous
+    if (yAxisEncoder.getPosition() < 2){
+      armPower = 0.1;
 
-    if(armUp){
-      if(Timer.getFPGATimestamp() - lastBurstTime < armTimeUp){
-        //armYAxis.set(armTravel1);
-      }
-      else{
-        //armYAxis.set(armHoldUp);
-      }
+    } else{
+      armPower = 0;
+      armYAxis.setIdleMode(IdleMode.kBrake);
     }
-    /*else{
-      if(Timer.getFPGATimestamp() - lastBurstTime < armTimeDown){
-        arm.set(-armTravel);
-        //arm.set(VictorSPXControlMode.PercentOutput, -armTravel);
-      }
-      else{
-        arm.set(-armHoldUp);
-        //arm.set(VictorSPXControlMode.PercentOutput, -armHoldUp);
-      }
-    }*/
+    armYAxis.set(armPower);
     
     //get time since start of auto then run drive code for autonomous
     double autoTimeElapsed = Timer.getFPGATimestamp() - autoStart;
@@ -230,23 +205,15 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
     //Set up arcade steer
-    /*double forward = -driverController.getRawAxis(1);
+    double forward = -driverController.getRawAxis(1);
     double turn = -driverController.getRawAxis(4);
-    
-    double driveLeftPower = forward - turn;
-    double driveRightPower = forward + turn;
 
-    driveLeftA.set(driveLeftPower);
-    driveLeftB.set(driveLeftPower);
-    driveRightA.set(driveRightPower);
-    driveRightB.set(driveRightPower);*/
-
-    //set up tank drive
-    drive.tankDrive(driverController.getRawAxis(1), driverController.getRawAxis(4));
+    //set up arcade drive
+    drive.arcadeDrive(forward, turn);
     
+
     //Code for the arm
-    double armPower;
-
+    
     // motion for the arm in the vertical direction
     if (armController.getLeftY() > 0.5) {
       //raise the arm
@@ -279,6 +246,7 @@ public class Robot extends TimedRobot {
     }
     setArmXAxisMotor(armPower);
 
+
     //Intake controls
 
     //solenoid controls
@@ -304,8 +272,7 @@ public class Robot extends TimedRobot {
       //disable the compressor
       compressor.disable();
     }
-
-   }
+  }
 
   //function for disabling everything at the end of the game
   @Override
@@ -313,15 +280,14 @@ public class Robot extends TimedRobot {
     //On disable turn off everything
     //done to solve issue with motors "remembering" previous setpoints after reenable
 
-    /*driveLeftA.set(0);
-    driveLeftB.set(0);
-    driveRightA.set(0);
-    driveRightB.set(0);*/
-
     leftMotors.set(0);
     rightMotors.set(0);
     
     armYAxis.set(0);
     armXAxis.set(0);
+
+    compressor.disable();
+    solenoid.set(DoubleSolenoid.Value.kReverse);
   }
+
 }
