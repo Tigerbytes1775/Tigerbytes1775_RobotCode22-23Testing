@@ -5,20 +5,28 @@ package frc.robot;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
+//import java.lang.Math;
 
 // motor controllers
 import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMax.IdleMode;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import edu.wpi.first.wpilibj.motorcontrol.PWMVictorSPX;
+
+import com.ctre.phoenix.motorcontrol.FeedbackDevice;
+import com.ctre.phoenix.motorcontrol.NeutralMode;
+import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+
+//encoders
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.SparkMaxRelativeEncoder;
 
 //pneumatics
 import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
+import edu.wpi.first.wpilibj.DoubleSolenoid.Value;
 
 //joysticks
 import edu.wpi.first.wpilibj.Joystick;
@@ -44,7 +52,7 @@ public class Robot extends TimedRobot {
 
   // variables for the arm controls
   CANSparkMax armYAxis = new CANSparkMax(11, MotorType.kBrushless);
-  PWMVictorSPX armXAxis = new PWMVictorSPX(5);
+  WPI_TalonSRX armXAxis = new WPI_TalonSRX(5);
 
   // Encoders for autonomous
   private RelativeEncoder yAxisEncoder;
@@ -66,8 +74,7 @@ public class Robot extends TimedRobot {
   static final int ArmCurrentLimitA = 20;
   //Arm power output
   static final double ArmOutputPower = 0.1;
-  //time to move the arm
-  static final double ArmExtendTime = 2.0;
+
   double armPower = 0.0;
 
   //Varibles needed for the code
@@ -77,6 +84,10 @@ public class Robot extends TimedRobot {
 
   double autoStart = 0;
   boolean goForAuto = true;
+
+  //Conversion factor: #ticks x 1/4096ticks x gear ratio x 6pi inches/rotation x 1/12 inch = x feet
+  // remember to adjust the conversion factor depending on what value we get
+  private final double kArmTick2Deg = 360.0 / 512 * 26 / 42 * 18 / 60 * 18 / 84;
 
 
   /**
@@ -100,7 +111,7 @@ public class Robot extends TimedRobot {
     armYAxis.setSmartCurrentLimit(ArmCurrentLimitA);
     ((CANSparkMax) armYAxis).burnFlash();
     armXAxis.setInverted(false);
-
+    
     //initial conditions for the intake
     compressor.disable();
 
@@ -108,7 +119,7 @@ public class Robot extends TimedRobot {
     SmartDashboard.putBoolean("Go For Auto", false);
     goForAuto = SmartDashboard.getBoolean("Go For Auto", false);
 
-    //Initialize encoders
+    //Initialize Y Axis encoder
     yAxisEncoder = armYAxis.getEncoder(SparkMaxRelativeEncoder.Type.kQuadrature, 4096);
     yAxisEncoder.setPosition(0);
 
@@ -118,8 +129,25 @@ public class Robot extends TimedRobot {
     armYAxis.setSoftLimit(CANSparkMax.SoftLimitDirection.kForward, 5);
     armYAxis.setSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, 0);
 
+    //Initialize X Axis Encoder
+    armXAxis.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0,10);
+    armXAxis.setSensorPhase(false);
+    armXAxis.setSelectedSensorPosition(0, 0, 10);
+
+    // setting boundaries for the x axis motor
+    armXAxis.configReverseSoftLimitThreshold((int) (0 / kArmTick2Deg) , 10);
+    armXAxis.configForwardSoftLimitThreshold((int) (0 / kArmTick2Deg), 10);
+
+    //enhabling the limits
+    armXAxis.configReverseSoftLimitEnable(true, 10);
+    armXAxis.configForwardSoftLimitEnable(true, 10);
   }
 
+  @Override
+  public void robotPeriodic() {
+    SmartDashboard.putNumber("Arm ENcoder Value", armXAxis.getSelectedSensorPosition() * kArmTick2Deg);
+  }
+ 
   /**
    * *set the arm output power. Positive is out, negative is in
    * 
@@ -161,37 +189,67 @@ public class Robot extends TimedRobot {
   //function that is called periodically during autonomous
   @Override
   public void autonomousPeriodic() {
-    //arm control code for autonomous
-    if (yAxisEncoder.getPosition() < 2){
-      armPower = 0.1;
+    //set all encoder values to 0
+    armXAxis.setSelectedSensorPosition(0,0,10);
+    NeutralMode mode = NeutralMode.Brake;
 
-    } else{
-      armPower = 0;
-      armYAxis.setIdleMode(IdleMode.kBrake);
-    }
-    armYAxis.set(armPower);
-    
+
     //get time since start of auto then run drive code for autonomous
     double autoTimeElapsed = Timer.getFPGATimestamp() - autoStart;
-    if(goForAuto){
 
-      //series of timed events making up the flow of auto
-      if(autoTimeElapsed < 3){
-        //drop the ball
-        setArmXAxisMotor(0.1);
-        
-      }if(autoTimeElapsed < 3){
-        //stop spitting out the ball and drive backwards *slowly* for three seconds
-        driveLeftA.set(-0.3);
-        driveLeftB.set(-0.3);
-        driveRightA.set(-0.3);
-        driveRightB.set(-0.3);
+    //series of timed events making up the flow of auto
+    if(goForAuto){
+      //arm control code for autonomous
+
+      //Y Axis: Raise the arm
+      double liftDistance = 2;
+      if (liftDistance < 2){
+        armPower = 0.1;
+      } else{
+        armPower = 0;
+        armYAxis.setIdleMode(IdleMode.kBrake);
+      }
+      armYAxis.set(armPower);
+    
+      //X Axis: Extend the arm
+      double extensionDistance = armXAxis.getSelectedSensorPosition() * kArmTick2Deg;
+      if (extensionDistance < 2) {
+        armPower = 0.1;
       } else {
-        //do nothing for the rest of auto
-        driveLeftA.set(0);
-        driveLeftB.set(0);
-        driveRightA.set(0);
-        driveRightB.set(0);
+        armPower = 0;
+        armXAxis.setNeutralMode(mode);
+      }
+      armXAxis.set(armPower);
+
+      //Drop the cargo
+      if (extensionDistance == 2){
+        solenoid.set(Value.kForward);
+      }
+
+      //retract the arm if the solenoid has opened (I need to change the condition to depend on the state of the solenoid)
+      if (extensionDistance == 2) {
+        armXAxis.set(-0.1);
+      }
+
+      //lower it if the arm has retracted
+      if (extensionDistance == 0) {
+        armYAxis.set(-0.1);
+      }
+
+      //drive backwards onto the platform
+      if(liftDistance == 0) {
+        if (autoTimeElapsed < 3) {
+          driveLeftA.set(-0.3);
+          driveLeftB.set(-0.3);
+          driveRightA.set(-0.3);
+          driveRightB.set(-0.3);
+        } else {
+          //do nothing for the rest of auto
+          driveLeftA.set(0);
+          driveLeftB.set(0);
+          driveRightA.set(0);
+          driveRightB.set(0);
+        }
       }
     }
 
@@ -253,12 +311,12 @@ public class Robot extends TimedRobot {
     if(armController.getLeftBumperPressed()){
 
       //fire the air one way
-      solenoid.set(DoubleSolenoid.Value.kForward);
+      solenoid.set(Value.kForward);
       
     } else if(armController.getRightBumperPressed()){
 
       //fire the air the other way
-      solenoid.set(DoubleSolenoid.Value.kReverse);
+      solenoid.set(Value.kReverse);
     }
 
     //compressor controls
