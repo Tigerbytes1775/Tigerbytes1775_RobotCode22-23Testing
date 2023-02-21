@@ -35,20 +35,19 @@ import edu.wpi.first.wpilibj.XboxController;
 
 public class Robot extends TimedRobot {
   // variables for the left controllers
-  PWMVictorSPX driveLeftA = new PWMVictorSPX(1);
-  PWMVictorSPX driveLeftB = new PWMVictorSPX(2);
-  // Motor controller group for the left motors
-  MotorControllerGroup leftMotors = new MotorControllerGroup(driveLeftA, driveLeftB);
+  WPI_TalonSRX driveLeftLead = new WPI_TalonSRX(1);
+  PWMVictorSPX driveLeftFollower = new PWMVictorSPX(2);
+  // Motor Controller group for the left motors
+  MotorControllerGroup leftMotors = new MotorControllerGroup(driveLeftLead, driveLeftFollower);
 
   // variables for the right motor controllers
-  PWMVictorSPX driveRightA = new PWMVictorSPX(3);
-  PWMVictorSPX driveRightB = new PWMVictorSPX(4);
+  WPI_TalonSRX driveRightLead = new WPI_TalonSRX(3);
+  PWMVictorSPX driveRightFollower = new PWMVictorSPX(4);
   // Motor controller group for the right motors
-  MotorControllerGroup rightMotors = new MotorControllerGroup(driveRightA, driveRightB);
+  MotorControllerGroup rightMotors = new MotorControllerGroup(driveRightLead, driveRightFollower);
 
   // establishing differential drive
   DifferentialDrive drive = new DifferentialDrive(leftMotors, rightMotors);
-
 
   // variables for the arm controls
   CANSparkMax armYAxis = new CANSparkMax(11, MotorType.kBrushless);
@@ -88,6 +87,7 @@ public class Robot extends TimedRobot {
   //Conversion factor: #ticks x 1/4096ticks x gear ratio x 6pi inches/rotation x 1/12 inch = x feet
   // remember to adjust the conversion factor depending on what value we get
   private final double kArmTick2Deg = 360.0 / 512 * 26 / 42 * 18 / 60 * 18 / 84;
+  private final double kDriveTick2Feet = 1.0 / 4096 * 6 * Math.PI / 12;
 
 
   /**
@@ -95,9 +95,9 @@ public class Robot extends TimedRobot {
    * initialization code.
    */
   
-   @Override
-
+   
   //function for setting the initial conditions of all the hardware
+   @Override
   public void robotInit() {
 
     //initial conditions for the drive motors
@@ -105,7 +105,7 @@ public class Robot extends TimedRobot {
     rightMotors.setInverted(false);
     drive.setDeadband(0.05);
     
-    //initla conditions for the arm
+    //initial conditions for the arm
     armYAxis.setInverted(true);
     armYAxis.setIdleMode(IdleMode.kBrake);
     armYAxis.setSmartCurrentLimit(ArmCurrentLimitA);
@@ -119,19 +119,35 @@ public class Robot extends TimedRobot {
     SmartDashboard.putBoolean("Go For Auto", false);
     goForAuto = SmartDashboard.getBoolean("Go For Auto", false);
 
+
+    // intialize the left lead drive motor encoder
+    driveLeftLead.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, 0, 10);
+    driveLeftLead.setSensorPhase(true);
+    driveLeftLead.setSelectedSensorPosition(0, 0, 10);
+
+
+    //initialize the right lead drive motor encoder
+    driveRightLead.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, 0, 10);
+    driveRightLead.setSensorPhase(false);
+    driveRightLead.setSelectedSensorPosition(0, 0, 10);
+
+
     //Initialize Y Axis encoder
     yAxisEncoder = armYAxis.getEncoder(SparkMaxRelativeEncoder.Type.kQuadrature, 4096);
     yAxisEncoder.setPosition(0);
 
+    //enable a soft limit for motion in the horizontal direction
     armYAxis.enableSoftLimit(CANSparkMax.SoftLimitDirection.kForward, true);
     armYAxis.enableSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, true);
 
+    //define the limit in the horizontal direction
     armYAxis.setSoftLimit(CANSparkMax.SoftLimitDirection.kForward, 5);
     armYAxis.setSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, 0);
 
+
     //Initialize X Axis Encoder
     armXAxis.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0,10);
-    armXAxis.setSensorPhase(false);
+    armXAxis.setSensorPhase(true);
     armXAxis.setSelectedSensorPosition(0, 0, 10);
 
     // setting boundaries for the x axis motor
@@ -145,7 +161,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void robotPeriodic() {
-    SmartDashboard.putNumber("Arm ENcoder Value", armXAxis.getSelectedSensorPosition() * kArmTick2Deg);
+    SmartDashboard.putNumber("Arm Ecoder Value", armXAxis.getSelectedSensorPosition() * kArmTick2Deg);
   }
  
   /**
@@ -199,8 +215,6 @@ public class Robot extends TimedRobot {
 
     //series of timed events making up the flow of auto
     if(goForAuto){
-      //arm control code for autonomous
-
       //Y Axis: Raise the arm
       double liftDistance = 2;
       if (liftDistance < 2){
@@ -212,7 +226,7 @@ public class Robot extends TimedRobot {
       armYAxis.set(armPower);
     
       //X Axis: Extend the arm
-      double extensionDistance = armXAxis.getSelectedSensorPosition() * kArmTick2Deg;
+      double extensionDistance = armXAxis.getSelectedSensorPosition() / kArmTick2Deg;
       if (extensionDistance < 2) {
         armPower = 0.1;
       } else {
@@ -226,9 +240,11 @@ public class Robot extends TimedRobot {
         solenoid.set(Value.kForward);
       }
 
-      //retract the arm if the solenoid has opened (I need to change the condition to depend on the state of the solenoid)
-      if (extensionDistance == 2) {
-        armXAxis.set(-0.1);
+      //retract the arm if the solenoid has opened
+      if (solenoid.get() == Value.kForward) {
+        if (extensionDistance == 2) {
+          armXAxis.set(-0.1);
+        }  
       }
 
       //lower it if the arm has retracted
@@ -236,21 +252,21 @@ public class Robot extends TimedRobot {
         armYAxis.set(-0.1);
       }
 
-      //drive backwards onto the platform
+      //drive backwards onto the platform (update to use PID)
+      double driveDistance = driveRightLead.getSelectedSensorPosition() / kDriveTick2Feet;
       if(liftDistance == 0) {
         if (autoTimeElapsed < 3) {
-          driveLeftA.set(-0.3);
-          driveLeftB.set(-0.3);
-          driveRightA.set(-0.3);
-          driveRightB.set(-0.3);
-        } else {
-          //do nothing for the rest of auto
-          driveLeftA.set(0);
-          driveLeftB.set(0);
-          driveRightA.set(0);
-          driveRightB.set(0);
+          if (driveDistance < 5) {
+            leftMotors.set(-0.3);
+            rightMotors.set(-0.3);
+
+          }else {
+            leftMotors.set(0);
+            rightMotors.set(0);
+          }
         }
       }
+
     }
 
   }
