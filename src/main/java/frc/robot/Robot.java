@@ -12,10 +12,11 @@ import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMax.IdleMode;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import edu.wpi.first.wpilibj.motorcontrol.PWMVictorSPX;
+import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
+
 
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.NeutralMode;
-import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 
@@ -34,26 +35,27 @@ import edu.wpi.first.wpilibj.PneumaticsModuleType;
 import edu.wpi.first.wpilibj.XboxController;
 
 public class Robot extends TimedRobot {
-  // variables for the left controllers
+  //variables for the left controllers
   WPI_TalonSRX driveLeftLead = new WPI_TalonSRX(1);
   PWMVictorSPX driveLeftFollower = new PWMVictorSPX(2);
   // Motor Controller group for the left motors
   MotorControllerGroup leftMotors = new MotorControllerGroup(driveLeftLead, driveLeftFollower);
 
-  // variables for the right motor controllers
+  //variables for the right motor controllers
   WPI_TalonSRX driveRightLead = new WPI_TalonSRX(3);
   PWMVictorSPX driveRightFollower = new PWMVictorSPX(4);
   // Motor controller group for the right motors
   MotorControllerGroup rightMotors = new MotorControllerGroup(driveRightLead, driveRightFollower);
 
-  // establishing differential drive
+  //establishing differential drive
   DifferentialDrive drive = new DifferentialDrive(leftMotors, rightMotors);
 
-  // variables for the arm controls
+
+  //variables for the arm controls
   CANSparkMax armYAxis = new CANSparkMax(11, MotorType.kBrushless);
   WPI_TalonSRX armXAxis = new WPI_TalonSRX(5);
 
-  // Encoders for autonomous
+  //Encoders for autonomous
   private RelativeEncoder yAxisEncoder;
 
 
@@ -62,13 +64,12 @@ public class Robot extends TimedRobot {
   DoubleSolenoid solenoid = new DoubleSolenoid(PneumaticsModuleType.REVPH, 0, 1);
 
 
-  // joysticks
+  //joysticks
   Joystick driverController = new Joystick(1);
   XboxController armController = new XboxController(0);
 
 
   //Constants for controlling the arm. needs adjustments for this robot
-  final double armTimeUp = 0.5;
   //current limit for the arm
   static final int ArmCurrentLimitA = 20;
   //Arm power output
@@ -84,11 +85,36 @@ public class Robot extends TimedRobot {
   double autoStart = 0;
   boolean goForAuto = true;
 
-  //Conversion factor: #ticks x 1/4096ticks x gear ratio x 6pi inches/rotation x 1/12 inch = x feet
-  // remember to adjust the conversion factor depending on what value we get
-  private final double kArmTick2Deg = 360.0 / 512 * 26 / 42 * 18 / 60 * 18 / 84;
-  private final double kDriveTick2Feet = 1.0 / 4096 * 6 * Math.PI / 12;
+  //Conversion factor: #ticks x 1/4096ticks x gear ratio x 6pi inches/rotation x 1/12 inch = ? feet
+  //remember to adjust the conversion factor so that it corresponds to our robot's setup (it should be correct)
+  private final double kArmTick2Deg = 360.0/4096 * 1/7;
+  private final double kDriveTick2Feet = 1.0/4096 * 6*Math.PI / 12;
 
+
+  /*PID Variables: 
+    This section contains variables needed to set the speed of the robot in relation to how far away it is from the target
+  */
+  //distance the robot needs to drive to get on the platform
+  double distanceToDrive = 0;
+  
+  //PID Proportional constant: Adjust as necessary
+  final double kp = 0;
+
+  //PID Integral constant: Adjust as necessary
+  final double kI = 0;
+
+  //PID Derivative constant: Adjust as necessary
+  final double kD = 0;
+
+  //errorSum accumulation zone limit
+  double iLimit = 1;
+
+  //variable to account for small errors
+  double errorSum = 0;
+  double lastTimeStamp = 0;
+
+  //varibales to account for the last known error rate
+  double lastError = 0;
 
   /**
    * This function is run when the robot is first started up and should be used for any
@@ -102,16 +128,18 @@ public class Robot extends TimedRobot {
 
     //initial conditions for the drive motors
     leftMotors.setInverted(true);
-    rightMotors.setInverted(false);
+    rightMotors.setInverted(true);
     drive.setDeadband(0.05);
     
     //initial conditions for the arm
-    armYAxis.setInverted(true);
+    armYAxis.setInverted(false);
     armYAxis.setIdleMode(IdleMode.kBrake);
     armYAxis.setSmartCurrentLimit(ArmCurrentLimitA);
     ((CANSparkMax) armYAxis).burnFlash();
     armXAxis.setInverted(false);
-    
+    NeutralMode mode = NeutralMode.Brake;
+    armXAxis.setNeutralMode(mode);
+
     //initial conditions for the intake
     compressor.disable();
 
@@ -122,13 +150,13 @@ public class Robot extends TimedRobot {
 
     // intialize the left lead drive motor encoder
     driveLeftLead.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, 0, 10);
-    driveLeftLead.setSensorPhase(true);
+    driveLeftLead.setSensorPhase(false);
     driveLeftLead.setSelectedSensorPosition(0, 0, 10);
 
 
     //initialize the right lead drive motor encoder
     driveRightLead.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, 0, 10);
-    driveRightLead.setSensorPhase(false);
+    driveRightLead.setSensorPhase(true);
     driveRightLead.setSelectedSensorPosition(0, 0, 10);
 
 
@@ -147,7 +175,7 @@ public class Robot extends TimedRobot {
 
     //Initialize X Axis Encoder
     armXAxis.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 0,10);
-    armXAxis.setSensorPhase(true);
+    armXAxis.setSensorPhase(false);
     armXAxis.setSelectedSensorPosition(0, 0, 10);
 
     // setting boundaries for the x axis motor
@@ -198,6 +226,12 @@ public class Robot extends TimedRobot {
   public void autonomousInit() {
     //get a time for auton start to do events based on time later
     autoStart = Timer.getFPGATimestamp();
+
+    //reset these variables to 0
+    lastTimeStamp = Timer.getFPGATimestamp();
+    errorSum = 0;
+    lastError = 0;
+
     //check dashboard icon to ensure good to do auto
     goForAuto = SmartDashboard.getBoolean("Go For Auto", false);
   }
@@ -208,7 +242,6 @@ public class Robot extends TimedRobot {
     //set all encoder values to 0
     armXAxis.setSelectedSensorPosition(0,0,10);
     NeutralMode mode = NeutralMode.Brake;
-
 
     //get time since start of auto then run drive code for autonomous
     double autoTimeElapsed = Timer.getFPGATimestamp() - autoStart;
@@ -226,7 +259,7 @@ public class Robot extends TimedRobot {
       armYAxis.set(armPower);
     
       //X Axis: Extend the arm
-      double extensionDistance = armXAxis.getSelectedSensorPosition() / kArmTick2Deg;
+      double extensionDistance = armXAxis.getSelectedSensorPosition() * kArmTick2Deg;
       if (extensionDistance < 2) {
         armPower = 0.1;
       } else {
@@ -246,24 +279,42 @@ public class Robot extends TimedRobot {
           armXAxis.set(-0.1);
         }  
       }
+        //close the solenoid
+        solenoid.set(Value.kReverse);
 
       //lower it if the arm has retracted
       if (extensionDistance == 0) {
         armYAxis.set(-0.1);
       }
 
-      //drive backwards onto the platform (update to use PID)
-      double driveDistance = driveRightLead.getSelectedSensorPosition() / kDriveTick2Feet;
+      //drive backwards onto the platform - Updated to use PID
+      double driveDistance = driveRightLead.getSelectedSensorPosition() * kDriveTick2Feet;
       if(liftDistance == 0) {
-        if (autoTimeElapsed < 3) {
-          if (driveDistance < 5) {
-            leftMotors.set(-0.3);
-            rightMotors.set(-0.3);
+        if (autoTimeElapsed < 5) {
+          distanceToDrive = 10;
 
-          }else {
-            leftMotors.set(0);
-            rightMotors.set(0);
+          // calculate the error
+          double error = distanceToDrive - driveDistance;
+
+          //calculate the change in time
+          double dT = Timer.getFPGATimestamp() - lastTimeStamp;
+
+          //calculte the error rate
+          double errorRate = (error - lastError) / dT;
+
+          // Only accumulate the errors if the robot is close to the platform
+          if (Math.abs(error) < iLimit) {
+            errorSum += error * dT;
           }
+
+          // set output speed according to the error and the small errors
+          double driveSpeed = kp*error + kI*errorSum + kD*errorRate;
+
+          leftMotors.set(driveSpeed);
+          rightMotors.set(driveSpeed);
+
+          //update last time stamp
+          lastTimeStamp = Timer.getFPGATimestamp();
         }
       }
 
