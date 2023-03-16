@@ -5,7 +5,7 @@ package frc.robot;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
-//import java.lang.Math;
+import java.lang.Math;
 
 // motor controllers
 import com.revrobotics.CANSparkMax;
@@ -149,7 +149,7 @@ public class Robot extends TimedRobot {
 
 
     // intialize the left lead drive motor encoder
-    driveLeftLead.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, 0, 10);
+    driveLeftLead.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 10);
     driveLeftLead.setSensorPhase(false);
     driveLeftLead.setSelectedSensorPosition(0, 0, 10);
 
@@ -161,7 +161,7 @@ public class Robot extends TimedRobot {
 
 
     //Initialize Y Axis encoder
-    yAxisEncoder = armYAxis.getEncoder(SparkMaxRelativeEncoder.Type.kQuadrature, 4096);
+    yAxisEncoder = armYAxis.getEncoder(SparkMaxRelativeEncoder.Type.kHallSensor, 4096);
     yAxisEncoder.setPosition(0);
 
     //enable a soft limit for motion in the horizontal direction
@@ -291,7 +291,7 @@ public class Robot extends TimedRobot {
       double driveDistance = driveRightLead.getSelectedSensorPosition() * kDriveTick2Feet;
       if(liftDistance == 0) {
         if (autoTimeElapsed < 5) {
-          distanceToDrive = 10;
+          distanceToDrive = -10;
 
           // calculate the error
           double error = distanceToDrive - driveDistance;
@@ -315,6 +315,7 @@ public class Robot extends TimedRobot {
 
           //update last time stamp
           lastTimeStamp = Timer.getFPGATimestamp();
+          lastError = error;
         }
       }
 
@@ -331,7 +332,7 @@ public class Robot extends TimedRobot {
   public void teleopPeriodic() {
     //Set up arcade steer
     double forward = -driverController.getRawAxis(1);
-    double turn = -driverController.getRawAxis(4);
+    double turn = driverController.getRawAxis(4);
 
     //set up arcade drive
     drive.arcadeDrive(forward, turn);
@@ -398,6 +399,9 @@ public class Robot extends TimedRobot {
       compressor.disable();
     }
   }
+
+  // add an endgame function to drive forward onto the platform at the end of the game
+  
 
   //function for disabling everything at the end of the game
   @Override
